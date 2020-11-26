@@ -9,21 +9,20 @@ namespace TDC.FileProcess.Models
     {
         public int Id { get; set; }
 
-        [StringLength(50)]
+        [StringLength(255)]
         public string Code { get; set; }
 
-        [StringLength(50)]
+        [StringLength(255)]
         public string FullName { get; set; }
 
-        [StringLength(100)]
+        [StringLength(255)]
         public string Department { get; set; }
 
         public DateTime? DateWorking { get; set; }
 
-        [StringLength(50)]
+        [StringLength(255)]
         public string CheckIn { get; set; }
 
-        [StringLength(50)]
         public string CheckOut { get; set; }
     }
 }

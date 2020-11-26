@@ -1,14 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using OfficeOpenXml;
+using OfficeOpenXml.Style;
+using System;
 using System.Configuration;
 using System.Data;
 using System.Data.OleDb;
 using System.Data.SqlClient;
+using System.Drawing;
 using System.IO;
-using System.Reflection;
 using System.Web;
 using System.Web.Mvc;
-using TDC.FileProcess.Dtos;
 using TDC.FileProcess.Ultilities;
 
 namespace TDC.FileProcess.Controllers
@@ -20,11 +20,11 @@ namespace TDC.FileProcess.Controllers
             return View();
         }
 
-
         [HttpPost]
         public ActionResult uploadData(HttpPostedFileBase postedFile)
         {
             string filePath = string.Empty;
+           
             if (postedFile != null)
             {
                 try
@@ -63,12 +63,10 @@ namespace TDC.FileProcess.Controllers
                     switch (extension)
                     {
                         case ".xls": //Excel 97-03.
-                            //conString = ConfigurationManager.ConnectionStrings["Excel03ConString"].ConnectionString;
                             conString = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=" + filePath + ";Extended Properties='Excel 8.0;HDR=YES'";
                             break;
 
                         case ".xlsx": //Excel 07 and above.
-                            //conString = ConfigurationManager.ConnectionStrings["Excel07ConString"].ConnectionString;
                             conString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" + filePath + ";Extended Properties='Excel 8.0;HDR=YES'";
                             break;
                         default:
@@ -104,63 +102,69 @@ namespace TDC.FileProcess.Controllers
                         }
                     }
 
-
                     conString = ConfigurationManager.ConnectionStrings["DBContext"].ConnectionString;
+
                     using (SqlConnection con = new SqlConnection(conString))
                     {
                         using (SqlBulkCopy sqlBulkCopy = new SqlBulkCopy(con))
                         {
                             //Set the database table name.
                             sqlBulkCopy.DestinationTableName = "dbo.Files";
-
-                            List<Employees> arrRows = new List<Employees>();
-                            List<Employees> arrColumns = new List<Employees>();
-
                             var rawNumber = dt.Rows.Count;
                             var colNumber = dt.Columns.Count;
                             try
                             {
-                                for (int i = 0; i < rawNumber; i++)
+                                int startrowMain = 3;
+
+                                 var templateFilePath = Server.MapPath("/Content/TemplateExcel/Report.xlsx");
+                                    FileInfo m_FileInfo = new FileInfo(templateFilePath);
+                                byte[] dataByte;
+                                using (var excelfilecontent = new ExcelPackage(m_FileInfo))
                                 {
-                                    var countCol = dt.Rows[i].ItemArray;
-                                    var code = dt.Rows[i].ItemArray[0];
-                                    var fullName = dt.Rows[i].ItemArray[1];
-                                    var department = dt.Rows[i].ItemArray[2];
-                                    DateTime dateWorking = (DateTime)dt.Rows[i].ItemArray[3];
-
-                                    sqlBulkCopy.ColumnMappings.Add("Code", "Code");
-                                    sqlBulkCopy.ColumnMappings.Add("FullName", "FullName");
-                                    sqlBulkCopy.ColumnMappings.Add("Department", "Department");
-                                    sqlBulkCopy.ColumnMappings.Add("DateWorking", "DateWorking");
-
-                                    bool stepIn = false;
-                                    bool stepOut = false;
-
-                                    for (int j = 4; j < countCol.Length; j++)
+                                    for (int i = 0; i < rawNumber; i++)
                                     {
+                                        var code       = dt.Rows[i].ItemArray[0].ToString();
+                                        var fullName   = dt.Rows[i].ItemArray[1].ToString();
+                                        var department = dt.Rows[i].ItemArray[2].ToString();
+                                        var dayWorking = dt.Rows[i].ItemArray[3].ToString("dd/MM/yyyy");
 
-                                        if (!dt.Rows[i].ItemArray[j.ToInt()].IsNullOrEmptyOrWhileSpace())
+                                        int isNumData = 0;
+                                        int tmp = 1;
+                                        //Đếm tổng số lần user quét trên từng dòng một.
+                                        for (int j = 4; j < colNumber; j++)
                                         {
-                                            DateTime checkIn = (DateTime)dt.Rows[i].ItemArray[j.ToInt()];
-                                            if (!checkIn.IsNullOrEmptyOrWhileSpace())
+                                            if (!dt.Rows[i].ItemArray[j.ToInt()].IsNullOrEmptyOrWhileSpace())
                                             {
-                                                if (checkIn.Hour < 13 && stepIn != true)
-                                                {
-                                                    sqlBulkCopy.ColumnMappings.Add("CheckIn", "CheckIn");
-                                                    stepIn = true;
-                                                }
-                                                if (checkIn.Hour > 13 && stepOut != true)
-                                                {
-                                                    sqlBulkCopy.ColumnMappings.Add("CheckIn", "CheckOut");
-                                                    stepOut = true;
-                                                }
+                                                isNumData++;
                                             }
                                         }
+
+                                        var worksheet1 = excelfilecontent.Workbook.Worksheets[0];
+                                        //Bắt đầu insert từ dòng 17 trong template
+                                        Insert_RichText(ref worksheet1, startrowMain, 1, code.IsNullOrEmptyOrWhileSpace()? "Day off" : code, false);
+                                        Insert_RichText(ref worksheet1, startrowMain, 2, fullName.IsNullOrEmptyOrWhileSpace() ? "Day off" : fullName, false);
+                                        Insert_RichText(ref worksheet1, startrowMain, 3, department.IsNullOrEmptyOrWhileSpace() ? "Day off" : department, false);
+                                        Insert_RichText(ref worksheet1, startrowMain, 4, dayWorking.IsNullOrEmptyOrWhileSpace() ? "Day off" : dayWorking, false);
+
+                                        //Lặp qua tổng số lần, và lấy lần đầu tiên và lần cuối cùng
+                                        for (int item = 4; item < colNumber; item++)
+                                        {
+                                            if (tmp == 1)
+                                            {
+                                                Insert_RichText(ref worksheet1, startrowMain, 5, dt.Rows[i].ItemArray[item].IsNullOrEmptyOrWhileSpace() ? "Day off" : dt.Rows[i].ItemArray[item].ToString("hh:mm tt"), false);
+                                            }
+                                            if (tmp == isNumData)
+                                            {
+                                                Insert_RichText(ref worksheet1, startrowMain, 6, dt.Rows[i].ItemArray[item].IsNullOrEmptyOrWhileSpace() ? "Day off" : dt.Rows[i].ItemArray[item].ToString("hh:mm tt"), false);
+                                            }
+                                            tmp++;
+                                        }
+                                        startrowMain ++;
                                     }
-                                    con.Open();
-                                    sqlBulkCopy.WriteToServer(dt);
-                                    con.Close();
+
+                                    dataByte = excelfilecontent.GetAsByteArray();
                                 }
+                                return File(dataByte, "application/xlsx", "CHAMCONG-" + DateTime.Now.ToString("dd_MM_yyyy_HH_mm_ss") + ".xlsx");
                             }
                             catch (Exception ex)
                             {
@@ -169,8 +173,6 @@ namespace TDC.FileProcess.Controllers
                             }
                         }
                     }
-
-
                 }
 
                 catch (Exception ex)
@@ -181,6 +183,48 @@ namespace TDC.FileProcess.Controllers
             return Redirect("~/Home");
         }
 
+        public void Insert_RichText(ref ExcelWorksheet worksheet, int IndexRow, int IndexColumn, string Value, bool isBold, bool isRed = false)
+        {
+            worksheet.Cells[IndexRow, IndexColumn].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+            worksheet.Cells[IndexRow, IndexColumn].Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
+            ExcelRichText RichText1 = worksheet.Cells[IndexRow, IndexColumn].RichText.Add(Value);
+            if (isRed)
+            {
+                RichText1.Bold = false;
+                RichText1.Italic = false;
+                RichText1.Color = Color.Red;
+                RichText1.FontName = "Arial Narrow";
+            }
+            else
+            {
+                RichText1.Color = Color.Black;
+            }
 
+            worksheet.Cells[IndexRow, IndexColumn].Style.WrapText = true;
+            worksheet.Cells[IndexRow, IndexColumn].IsRichText = true;
+            worksheet.Row(IndexRow).Height = 20;
+
+            //Auto height row
+            worksheet.Row(IndexRow).CustomHeight = false;
+
+            RichText1.Bold = isBold;
+        }
+
+        public void Insert_Table_Column(ref ExcelWorksheet worksheet, int IndexRow, int IndexColumn, object Value, bool isCenter = false, bool isBold = false)
+        {
+            worksheet.Cells[IndexRow, IndexColumn].Value = Value;
+            worksheet.Cells[IndexRow, IndexColumn].Style.Font.Bold = isBold;
+            worksheet.Cells[IndexRow, IndexColumn].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+            worksheet.Cells[IndexRow, IndexColumn].Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
+            if (isCenter)
+                worksheet.Cells[IndexRow, IndexColumn].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            worksheet.Cells[IndexRow, IndexColumn].Style.Font.Color.SetColor(System.Drawing.Color.Black);
+            worksheet.Cells[IndexRow, IndexColumn].Style.WrapText = true;
+            worksheet.Cells[IndexRow, IndexColumn].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+        }
+        public void Set_Cell_Border(ref ExcelWorksheet worksheet, int IndexRow, int IndexColumn)
+        {
+            worksheet.Cells[IndexRow, IndexColumn].Style.Border.BorderAround(ExcelBorderStyle.Thin);
+        }
     }
 }
